@@ -1,0 +1,69 @@
+{
+  "projectType": "saas",
+  "projectName": "ElectroHome",
+  "projectDescription": "A Django-based ecommerce platform for electronics and home goods, featuring Google OAuth authentication, Wompi payment processing, and Cloudinary media storage.",
+  "theme": "almond",
+  "primaryColor": "#2563EB",
+  "lightColor": "#EFF6FF",
+  "darkColor": "#1E40AF",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Configuration",
+            "pages": ["configuration/settings", "configuration/environment-variables", "configuration/database"]
+          },
+          {
+            "group": "Features",
+            "pages": ["features/authentication", "features/payments", "features/media-storage"]
+          },
+          {
+            "group": "Deployment",
+            "pages": ["deployment/overview", "deployment/render", "deployment/environment-setup"]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Settings",
+            "pages": ["reference/settings-base", "reference/settings-production"]
+          },
+          {
+            "group": "Management",
+            "pages": ["reference/manage-commands", "reference/build-script"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Django 5.2 web framework with modular settings for local and production environments",
+    "Google OAuth social authentication via django-allauth",
+    "Wompi payment gateway integration for ecommerce transactions",
+    "Cloudinary media storage for product images and user uploads",
+    "PostgreSQL database support with dj-database-url configuration",
+    "Whitenoise static file serving for production deployments",
+    "SSL/HTTPS enforcement with CSRF and session security in production",
+    "Deployment-ready configuration for Render and Railway platforms"
+  ],
+  "publicApiSurface": [
+    "GET /admin/ - Django admin panel",
+    "DJANGO_SETTINGS_MODULE - environment variable to select settings module",
+    "electrohome.settings.production - production settings module",
+    "manage.py migrate - apply database migrations",
+    "manage.py collectstatic - collect static files",
+    "build.sh - production build and deployment script",
+    "WOMPI_PUBLIC_KEY / WOMPI_PRIVATE_KEY - payment gateway credentials",
+    "CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET - media storage credentials",
+    "DATABASE_URL - PostgreSQL connection string",
+    "CSRF_TRUSTED_ORIGINS - allowed CSRF origins for production"
+  ]
+}
