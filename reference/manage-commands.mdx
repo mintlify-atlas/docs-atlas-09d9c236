@@ -1,0 +1,177 @@
+---
+title: "Management commands"
+description: "Reference for Django management commands used to develop, maintain, and deploy ElectroHome."
+---
+
+All commands are run from the project root (the directory containing `manage.py`). Activate your virtual environment first.
+
+<Tip>
+  Append `--settings=electrohome.Settings.production` to any command to run it against the production configuration. This is required for deployment tasks like collecting static files and applying migrations on the server.
+</Tip>
+
+---
+
+## Development
+
+### `runserver`
+
+Start the local development server.
+
+```bash
+python manage.py runserver
+```
+
+Django starts a server at `http://127.0.0.1:8000/` and reloads automatically when Python files change. Stop it with `Ctrl+C`.
+
+To bind to a different address or port:
+
+```bash
+python manage.py runserver 0.0.0.0:8080
+```
+
+<Warning>
+  The development server is single-threaded and not hardened for production traffic. Never expose it publicly.
+</Warning>
+
+---
+
+### `shell`
+
+Open an interactive Python shell with the Django environment loaded.
+
+```bash
+python manage.py shell
+```
+
+All Django models, settings, and utilities are available for import. Use this for debugging, one-off data operations, and exploring the ORM.
+
+To run a Python expression directly without entering the interactive shell:
+
+```bash
+python manage.py shell -c "from django.contrib.auth.models import User; print(User.objects.count())"
+```
+
+---
+
+## Database migrations
+
+### `makemigrations`
+
+Generate new migration files from changes to your models.
+
+```bash
+python manage.py makemigrations
+```
+
+Django compares the current model definitions to the last recorded state and writes one or more migration files to each app's `migrations/` directory. Commit these files to version control.
+
+To create migrations for a specific app only:
+
+```bash
+python manage.py makemigrations <app_name>
+```
+
+---
+
+### `migrate`
+
+Apply pending migrations to the database.
+
+```bash
+python manage.py migrate
+```
+
+Django runs all unapplied migrations in dependency order and prints each one as it executes. Run this after pulling changes that include new migration files, and after running `makemigrations`.
+
+To apply migrations using the production settings (as done in `build.sh`):
+
+```bash
+python manage.py migrate --settings=electrohome.Settings.production
+```
+
+To apply only the migrations for a specific app:
+
+```bash
+python manage.py migrate <app_name>
+```
+
+---
+
+## Admin
+
+### `createsuperuser`
+
+Create a Django admin superuser account interactively.
+
+```bash
+python manage.py createsuperuser
+```
+
+You will be prompted for a username, email address, and password. The password must pass all validators defined in `AUTH_PASSWORD_VALIDATORS`.
+
+<Note>
+  On production, run this command after `migrate` completes. The superuser account is required to log in to the Django admin at `/admin/`.
+</Note>
+
+---
+
+## Static files
+
+### `collectstatic`
+
+Copy all static files from each installed app into `STATIC_ROOT`.
+
+```bash
+python manage.py collectstatic
+```
+
+In production, Whitenoise serves files from `STATIC_ROOT`. Run `collectstatic` before starting the server so all assets are available.
+
+The `build.sh` script runs this automatically on each deploy:
+
+```bash
+python manage.py collectstatic --no-input --settings=electrohome.Settings.production
+```
+
+`--no-input` skips the confirmation prompt, which is required for automated build environments.
+
+---
+
+## Using `--settings`
+
+The `--settings` flag overrides the `DJANGO_SETTINGS_MODULE` environment variable for a single command.
+
+```bash
+python manage.py <command> --settings=electrohome.Settings.production
+```
+
+This is the recommended way to run deployment commands locally when you want to test against the production configuration without permanently changing your environment.
+
+<Tabs>
+  <Tab title="Development (default)">
+    ```bash
+    python manage.py migrate
+    python manage.py runserver
+    python manage.py shell
+    ```
+    Loads `electrohome.settings` (SQLite, DEBUG=True).
+  </Tab>
+  <Tab title="Production">
+    ```bash
+    python manage.py migrate --settings=electrohome.Settings.production
+    python manage.py collectstatic --no-input --settings=electrohome.Settings.production
+    python manage.py shell --settings=electrohome.Settings.production
+    ```
+    Loads `electrohome.Settings.production` (PostgreSQL, DEBUG=False).
+  </Tab>
+</Tabs>
+
+---
+
+## URL patterns
+
+The following URL patterns are registered in `electrohome/urls.py`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/` | Django admin panel. Log in with a superuser account created via `createsuperuser`. Provides full CRUD access to all registered models. |

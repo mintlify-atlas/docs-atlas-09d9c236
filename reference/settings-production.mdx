@@ -1,0 +1,266 @@
+---
+title: "Production settings"
+description: "Reference for electrohome/Settings/production.py — overrides applied when deploying to Render or any production host."
+---
+
+The production settings file extends the base settings with `from .base import *` and overrides every value that differs between development and production. It relies entirely on environment variables for secrets; no sensitive value is hardcoded.
+
+<Info>
+  Load the production settings by passing `--settings=electrohome.Settings.production` to any `manage.py` command, or by setting `DJANGO_SETTINGS_MODULE=electrohome.Settings.production` in the environment.
+</Info>
+
+---
+
+## Core overrides
+
+### `DEBUG`
+
+```python
+DEBUG = False
+```
+
+Disables detailed error pages and forces Django to return generic 500/404 responses. This is required in production to avoid leaking code, local file paths, and settings values to users.
+
+---
+
+### `SITE_ID`
+
+```python
+SITE_ID = 4
+```
+
+Tells `django.contrib.sites` which `Site` record this deployment corresponds to. Used by `django-allauth` to build OAuth callback URLs and by `allauth`'s `ACCOUNT_DEFAULT_HTTP_PROTOCOL` setting.
+
+<Note>
+  The `build.sh` script creates or updates a `Site` record with `id=7` pointing to `ecommerce-electrohome-render.onrender.com`. If `SITE_ID` and the record ID differ, OAuth redirects will break. Verify both values match your deployment.
+</Note>
+
+---
+
+### `ALLOWED_HOSTS`
+
+```python
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+```
+
+| Environment variable | Format | Example |
+|----------------------|--------|---------|
+| `ALLOWED_HOSTS` | Comma-separated hostnames | `electrohome.example.com,www.electrohome.example.com` |
+
+Defaults to `['*']` (any host) if the variable is not set. Set it explicitly to your deployment domain in production to prevent HTTP Host header attacks.
+
+---
+
+## Database
+
+```python
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600
+    )
+}
+```
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `DATABASE_URL` | Full PostgreSQL connection string, e.g. `postgres://user:pass@host:5432/dbname`. Provided automatically by Render's managed PostgreSQL add-on. |
+
+`conn_max_age=600` keeps each database connection open for up to 10 minutes, reducing connection overhead on repeated requests.
+
+---
+
+## Caching
+
+```python
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}
+```
+
+`LocMemCache` stores cache entries in the local process memory. It does not persist across restarts and is not shared between multiple worker processes. It is suitable for single-process deployments and for caching items such as rendered template fragments that regenerate quickly.
+
+<Tip>
+  For multi-worker deployments, replace this with a shared backend such as Redis or Memcached.
+</Tip>
+
+---
+
+## Security
+
+```python
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+```
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `CSRF_COOKIE_SECURE` | `True` | Sends the CSRF cookie only over HTTPS connections. |
+| `SESSION_COOKIE_SECURE` | `True` | Sends the session cookie only over HTTPS connections. |
+| `CSRF_TRUSTED_ORIGINS` | From `CSRF_TRUSTED_ORIGINS` env var | Comma-separated list of trusted origins for cross-origin requests (required by Django 4.0+). Example: `https://electrohome.example.com`. |
+| `SECURE_SSL_REDIRECT` | `True` | Redirects all HTTP requests to HTTPS. |
+| `SECURE_PROXY_SSL_HEADER` | `('HTTP_X_FORWARDED_PROTO', 'https')` | Tells Django to trust the `X-Forwarded-Proto` header set by Render's reverse proxy when determining whether the original request was HTTPS. |
+
+---
+
+## Email
+
+```python
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+EMAIL_USE_TLS = False
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+```
+
+ElectroHome sends transactional email through Gmail SMTP using implicit SSL on port 465.
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `EMAIL_BACKEND` | `smtp.EmailBackend` | Uses Django's built-in SMTP backend. |
+| `EMAIL_HOST` | `smtp.gmail.com` | Gmail's outgoing mail server. |
+| `EMAIL_PORT` | `465` | Port for implicit SSL (SMTPS). |
+| `EMAIL_USE_SSL` | `True` | Establishes an SSL connection immediately on connect. |
+| `EMAIL_USE_TLS` | `False` | Disabled because `EMAIL_USE_SSL` is used instead. Do not set both to `True`. |
+| `DEFAULT_FROM_EMAIL` | `EMAIL_HOST_USER` | The sender address shown in outgoing emails. |
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `EMAIL_HOST_USER` | Gmail address used to authenticate with the SMTP server. |
+| `EMAIL_HOST_PASSWORD` | Gmail App Password. Generate one at myaccount.google.com → Security → App Passwords. |
+
+<Warning>
+  Gmail requires a dedicated **App Password** when 2-Step Verification is enabled. Your main Google account password will not work.
+</Warning>
+
+---
+
+## Payments (Wompi)
+
+```python
+WOMPI_PUBLIC_KEY = os.environ.get('WOMPI_PUBLIC_KEY', '')
+WOMPI_PRIVATE_KEY = os.environ.get('WOMPI_PRIVATE_KEY', '')
+WOMPI_ENVIRONMENT = os.environ.get('WOMPI_ENVIRONMENT', 'test')
+WOMPI_API_URL = 'https://sandbox.wompi.co/v1'
+```
+
+Wompi is the payment gateway used by ElectroHome.
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `WOMPI_PUBLIC_KEY` | Public key from your Wompi dashboard. Safe to expose in frontend code. |
+| `WOMPI_PRIVATE_KEY` | Private key from your Wompi dashboard. Keep secret; used for server-side API calls. |
+| `WOMPI_ENVIRONMENT` | `test` (default) or `production`. Controls which Wompi endpoint is used. |
+
+<Warning>
+  `WOMPI_API_URL` is hardcoded to the sandbox endpoint (`sandbox.wompi.co/v1`). Update this value to the production Wompi endpoint when `WOMPI_ENVIRONMENT=production`.
+</Warning>
+
+---
+
+## Static files
+
+```python
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+```
+
+Whitenoise serves pre-collected static files directly from the Django process, without a separate web server or CDN. `CompressedStaticFilesStorage` generates gzip and Brotli-compressed versions of each file at `collectstatic` time and serves the appropriate version based on the client's `Accept-Encoding` header.
+
+Whitenoise's middleware must be placed immediately after `SecurityMiddleware` in the `MIDDLEWARE` list.
+
+---
+
+## Media storage (Cloudinary)
+
+```python
+INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+}
+```
+
+Product images and other user-uploaded media are stored on Cloudinary instead of the local filesystem, which is ephemeral on Render.
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name, found on the Cloudinary dashboard. |
+| `CLOUDINARY_API_KEY` | API key from the Cloudinary dashboard. |
+| `CLOUDINARY_API_SECRET` | API secret from the Cloudinary dashboard. Keep secret; used to sign upload requests. |
+
+---
+
+## Authentication (allauth / Google OAuth)
+
+```python
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
+SOCIALACCOUNT_QUERY_EMAIL = True
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+SOCIALACCOUNT_STORE_TOKENS = True
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_AUTO_SIGNUP = True
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        }
+    }
+}
+```
+
+<AccordionGroup>
+  <Accordion title="Core allauth settings">
+
+  | Setting | Value | Description |
+  |---------|-------|-------------|
+  | `ACCOUNT_DEFAULT_HTTP_PROTOCOL` | `https` | Forces allauth to generate `https://` callback URLs. Required when `DEBUG=False` behind a reverse proxy. |
+  | `ACCOUNT_EMAIL_VERIFICATION` | `none` | Skips email verification for standard (username/password) signups. |
+
+  </Accordion>
+  <Accordion title="Social account settings">
+
+  | Setting | Value | Description |
+  |---------|-------|-------------|
+  | `SOCIALACCOUNT_QUERY_EMAIL` | `True` | Requests the user's email address from the OAuth provider. |
+  | `SOCIALACCOUNT_EMAIL_REQUIRED` | `True` | Requires the OAuth provider to return an email address. Users without a public email on their Google account cannot sign in. |
+  | `SOCIALACCOUNT_STORE_TOKENS` | `True` | Stores the OAuth access and refresh tokens in the database for later use. |
+  | `SOCIALACCOUNT_LOGIN_ON_GET` | `True` | Allows the OAuth callback to complete on a `GET` request. Disabling this adds a confirmation step. |
+  | `SOCIALACCOUNT_AUTO_SIGNUP` | `True` | Automatically creates a new Django user account when a social login is first used. |
+  | `SOCIALACCOUNT_EMAIL_VERIFICATION` | `none` | Skips email verification for social signups since the email was already verified by the OAuth provider. |
+
+  </Accordion>
+  <Accordion title="Google OAuth provider">
+
+  ```python
+  SOCIALACCOUNT_PROVIDERS = {
+      'google': {
+          'SCOPE': ['profile', 'email'],
+          'AUTH_PARAMS': {
+              'access_type': 'online',
+          }
+      }
+  }
+  ```
+
+  | Key | Value | Description |
+  |-----|-------|-------------|
+  | `SCOPE` | `['profile', 'email']` | Requests the user's public profile and email address from Google. |
+  | `access_type` | `online` | Requests an online access token only. Use `offline` if you need a refresh token for background tasks. |
+
+  Configure the Google OAuth application in the Django admin under **Social Applications**, using credentials from the [Google Cloud Console](https://console.cloud.google.com/).
+
+  </Accordion>
+</AccordionGroup>

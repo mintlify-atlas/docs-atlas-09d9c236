@@ -1,0 +1,135 @@
+---
+title: "Payments"
+description: "Wompi payment gateway integration for processing card transactions in Colombian pesos."
+---
+
+## Overview
+
+[Wompi](https://wompi.co) is a Colombian payment gateway that allows merchants to accept credit and debit card payments, bank transfers (PSE), and other local payment methods. ElectroHome integrates with Wompi to process checkout transactions.
+
+Wompi provides a sandbox environment for testing and a production environment for live payments. The environment is controlled by the `WOMPI_ENVIRONMENT` variable.
+
+## Sandbox vs production
+
+<Tabs>
+  <Tab title="Sandbox (testing)">
+    The sandbox environment processes no real money. Use it during development and QA.
+
+    ```bash
+    WOMPI_ENVIRONMENT=test
+    WOMPI_API_URL=https://sandbox.wompi.co/v1
+    ```
+
+    Wompi provides test card numbers in their [sandbox documentation](https://docs.wompi.co/docs/en/widget-checkout-web) for simulating successful and declined transactions.
+  </Tab>
+  <Tab title="Production">
+    The production environment processes real transactions.
+
+    ```bash
+    WOMPI_ENVIRONMENT=production
+    WOMPI_API_URL=https://production.wompi.co/v1
+    ```
+
+    <Warning>
+    Only switch to `production` after completing end-to-end testing in sandbox. Charges made in production are real.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Environment variables
+
+Set the following variables in your deployment environment (e.g., Render, Railway, or a `.env` file locally):
+
+| Variable | Description |
+|----------|-------------|
+| `WOMPI_PUBLIC_KEY` | Public key used in client-side or server-side requests to initialise the payment widget. |
+| `WOMPI_PRIVATE_KEY` | Private key used for server-side API calls (e.g., verifying transaction status). Keep this secret. |
+| `WOMPI_ENVIRONMENT` | Set to `test` for sandbox or `production` for live payments. Defaults to `test`. |
+
+These map directly to the settings in `electrohome/Settings/production.py`:
+
+```python
+WOMPI_PUBLIC_KEY = os.environ.get('WOMPI_PUBLIC_KEY', '')
+WOMPI_PRIVATE_KEY = os.environ.get('WOMPI_PRIVATE_KEY', '')
+WOMPI_ENVIRONMENT = os.environ.get('WOMPI_ENVIRONMENT', 'test')
+WOMPI_API_URL = 'https://sandbox.wompi.co/v1'
+```
+
+<Info>
+`WOMPI_API_URL` is hardcoded to the sandbox URL in `production.py`. Update this value when switching to the production environment.
+</Info>
+
+## Getting API keys from Wompi
+
+<Steps>
+  <Step title="Create a Wompi account">
+    Go to [wompi.co](https://wompi.co) and register as a merchant. You will need to provide business details for account verification.
+  </Step>
+  <Step title="Access the developer dashboard">
+    After logging in, navigate to **Desarrolladores** (Developers) in the Wompi dashboard sidebar.
+  </Step>
+  <Step title="Locate your API keys">
+    Under the **Llaves de API** (API Keys) section, you will find:
+
+    - **Llave pública** (Public key) — begins with `pub_test_` in sandbox or `pub_prod_` in production.
+    - **Llave privada** (Private key) — begins with `prv_test_` in sandbox or `prv_prod_` in production.
+  </Step>
+  <Step title="Copy keys into your environment">
+    Add both keys to your environment variables as `WOMPI_PUBLIC_KEY` and `WOMPI_PRIVATE_KEY`.
+
+    ```bash
+    WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ```
+  </Step>
+</Steps>
+
+## Public key vs private key
+
+| Key | Usage | Exposure |
+|-----|-------|----------|
+| `WOMPI_PUBLIC_KEY` | Initialising the Wompi payment widget on a checkout page; included in API requests that do not require elevated trust. | Safe to include in server-rendered HTML. Do not hard-code in a public JavaScript bundle. |
+| `WOMPI_PRIVATE_KEY` | Server-side calls to verify or query transaction status via the Wompi REST API. | Must never be exposed to the browser or included in client-side code. |
+
+<Warning>
+Never expose `WOMPI_PRIVATE_KEY` in client-side JavaScript, HTML source, or version control. Rotate the key immediately if it is leaked.
+</Warning>
+
+## Switching to production
+
+When you are ready to accept real payments, make three changes:
+
+<Steps>
+  <Step title="Replace sandbox keys with production keys">
+    Update your environment variables with the production keys from the Wompi dashboard:
+
+    ```bash
+    WOMPI_PUBLIC_KEY=pub_prod_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    WOMPI_PRIVATE_KEY=prv_prod_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    WOMPI_ENVIRONMENT=production
+    ```
+  </Step>
+  <Step title="Update WOMPI_API_URL in production.py">
+    Change the hardcoded URL in `electrohome/Settings/production.py`:
+
+    ```python
+    # Before
+    WOMPI_API_URL = 'https://sandbox.wompi.co/v1'
+
+    # After
+    WOMPI_API_URL = 'https://production.wompi.co/v1'
+    ```
+
+    Alternatively, read this value from an environment variable to avoid a code change:
+
+    ```python
+    WOMPI_API_URL = os.environ.get(
+        'WOMPI_API_URL',
+        'https://sandbox.wompi.co/v1'
+    )
+    ```
+  </Step>
+  <Step title="Verify your Wompi merchant account">
+    Wompi requires merchant accounts to be verified before processing live transactions. Confirm your account status in the Wompi dashboard before directing real users to checkout.
+  </Step>
+</Steps>

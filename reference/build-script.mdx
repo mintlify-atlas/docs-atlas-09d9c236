@@ -1,0 +1,132 @@
+---
+title: "Build script"
+description: "Reference for build.sh — the shell script that Render executes on every deploy to install dependencies, collect static files, run migrations, and configure the Sites framework."
+---
+
+`build.sh` is the production build script run automatically by [Render](https://render.com) each time a new deploy is triggered. It runs in the repository root and must exit with code `0` for the deploy to succeed.
+
+---
+
+## Full script
+
+```bash
+#!/usr/bin/env bash
+set -o errexit
+
+echo "Instalando dependencias..."
+pip install -r requirements.txt
+
+echo "Recolectando archivos estáticos..."
+python manage.py collectstatic --no-input --settings=electrohome.settings.production
+
+echo "Aplicando migraciones..."
+python manage.py migrate --settings=electrohome.settings.production
+
+echo "Configurando Site domain..."
+python manage.py shell --settings=electrohome.settings.production -c "
+from django.contrib.sites.models import Site
+site, _ = Site.objects.get_or_create(id=7)
+site.domain = 'ecommerce-electrohome-render.onrender.com'
+site.name = 'ElectroHome'
+site.save()
+print('Site configurado:', site.domain)
+"
+
+echo "Build completado exitosamente."
+```
+
+---
+
+## Error handling
+
+```bash
+set -o errexit
+```
+
+This option (equivalent to `set -e`) causes the script to exit immediately if any command returns a non-zero exit code. This prevents later steps from running against a broken state — for example, starting the server with missing migrations or stale static files.
+
+---
+
+## Steps
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    Installs all Python packages listed in `requirements.txt` into the current environment. On Render, this runs inside an isolated build environment with a fresh virtualenv on each deploy.
+  </Step>
+
+  <Step title="Collect static files">
+    ```bash
+    python manage.py collectstatic --no-input --settings=electrohome.settings.production
+    ```
+
+    Copies every static file from each installed app into `STATIC_ROOT`. Whitenoise serves files from this directory in production.
+
+    `--no-input` suppresses the interactive confirmation prompt so the command can run unattended in CI/CD.
+
+    The production settings configure `STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'`, so this step also generates pre-compressed `.gz` and `.br` variants of each file.
+  </Step>
+
+  <Step title="Apply migrations">
+    ```bash
+    python manage.py migrate --settings=electrohome.settings.production
+    ```
+
+    Applies all unapplied database migrations to the production PostgreSQL database. This step creates tables for new models, adds columns, and applies any other schema changes committed since the last deploy.
+
+    <Warning>
+      Migrations run against the live database. If a migration is destructive (drops a column, removes a table), data will be lost. Always review migrations before deploying.
+    </Warning>
+  </Step>
+
+  <Step title="Configure the Sites framework">
+    ```bash
+    python manage.py shell --settings=electrohome.settings.production -c "
+    from django.contrib.sites.models import Site
+    site, _ = Site.objects.get_or_create(id=7)
+    site.domain = 'ecommerce-electrohome-render.onrender.com'
+    site.name = 'ElectroHome'
+    site.save()
+    print('Site configurado:', site.domain)
+    "
+    ```
+
+    Creates or updates the `Site` record with `id=7` to point to the Render deployment URL. `django-allauth` uses this record to build OAuth callback URLs — if the domain is wrong, Google sign-in will fail.
+
+    `get_or_create(id=7)` is idempotent: safe to run on every deploy whether or not the record already exists.
+
+    <Note>
+      The `SITE_ID` in `production.py` is set to `4`, while this step uses `id=7`. Verify that `SITE_ID` and the `id` passed to `get_or_create` match your actual deployment configuration.
+    </Note>
+  </Step>
+</Steps>
+
+---
+
+## Running locally
+
+You can execute the build script locally to simulate a production deploy. Make sure your `DATABASE_URL` and other production environment variables are set first.
+
+```bash
+chmod +x electrohome/build.sh
+./electrohome/build.sh
+```
+
+<Warning>
+  Running `build.sh` locally will apply migrations and modify the Sites framework record against whichever database `DATABASE_URL` points to. If that variable is set to your production database, changes will affect live data.
+</Warning>
+
+---
+
+## Configuring on Render
+
+In the Render dashboard, set the **Build Command** field for your web service to:
+
+```
+./build.sh
+```
+
+Render runs this command from the repository root on each deploy. The **Start Command** (e.g., `gunicorn electrohome.wsgi`) runs separately after the build completes.

@@ -1,0 +1,164 @@
+---
+title: "Environment variables"
+description: "All environment variables required by ElectroHome's production settings, with descriptions and a ready-to-use .env example."
+---
+
+ElectroHome reads configuration from environment variables in production. None of these values should be hard-coded in source code or committed to version control.
+
+<Warning>
+  Set `SECRET_KEY`, `DATABASE_URL`, and the Cloudinary credentials before starting the production server. The application will not start correctly without them.
+</Warning>
+
+## Core Django
+
+<ParamField path="SECRET_KEY" type="string" required>
+  Django's cryptographic signing key. Used for sessions, CSRF tokens, and password reset links. Generate a unique value with:
+
+  ```bash
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  ```
+
+  Never reuse the development placeholder from `settings.py` in production.
+</ParamField>
+
+<ParamField path="DEBUG" type="string" default="False">
+  Set to `True` only on local development machines. The production settings file hardcodes `DEBUG = False` regardless of this variable — it is listed here for completeness when running with a custom settings module.
+</ParamField>
+
+<ParamField path="ALLOWED_HOSTS" type="string" required>
+  Comma-separated list of hostnames that Django will serve. In production, set this to your actual domain.
+
+  ```
+  ALLOWED_HOSTS=electrohome.onrender.com,www.electrohome.co
+  ```
+
+  If not set, the production file defaults to `*` (all hosts), which is insecure for public deployments.
+</ParamField>
+
+<ParamField path="CSRF_TRUSTED_ORIGINS" type="string" required>
+  Comma-separated list of trusted origins for CSRF validation. Must include the full scheme and host for every domain that submits forms.
+
+  ```
+  CSRF_TRUSTED_ORIGINS=https://electrohome.onrender.com,https://www.electrohome.co
+  ```
+</ParamField>
+
+## Database
+
+<ParamField path="DATABASE_URL" type="string" required>
+  PostgreSQL connection string used by `dj-database-url` to configure `DATABASES['default']`.
+
+  ```
+  DATABASE_URL=postgresql://user:password@host:5432/dbname
+  ```
+
+  On Render, this variable is automatically injected when you link a PostgreSQL database to your web service. See [Database configuration](/configuration/database) for details.
+</ParamField>
+
+## Email (Gmail SMTP)
+
+The production settings use Gmail's SMTP server on port 465 with SSL. Both variables are required for transactional emails (password resets, order confirmations) to be delivered.
+
+<ParamField path="EMAIL_HOST_USER" type="string" required>
+  Full Gmail address used as the SMTP login and the `From` address for all outgoing emails.
+
+  ```
+  EMAIL_HOST_USER=noreply@electrohome.co
+  ```
+</ParamField>
+
+<ParamField path="EMAIL_HOST_PASSWORD" type="string" required>
+  Gmail App Password for the account above. This is **not** your regular Gmail password — generate one at **Google Account → Security → App passwords**.
+
+  ```
+  EMAIL_HOST_PASSWORD=abcd efgh ijkl mnop
+  ```
+</ParamField>
+
+## Payments (Wompi)
+
+<ParamField path="WOMPI_PUBLIC_KEY" type="string" required>
+  Wompi publishable key, used in front-end checkout widgets. Starts with `pub_` for production or `pub_test_` for sandbox.
+</ParamField>
+
+<ParamField path="WOMPI_PRIVATE_KEY" type="string" required>
+  Wompi private key, used for server-side API calls to create and verify transactions. Keep this value secret.
+</ParamField>
+
+<ParamField path="WOMPI_ENVIRONMENT" type="string" default="test">
+  Controls which Wompi API endpoint is used. Set to `test` during development and `production` when you are ready to accept real payments.
+
+  Accepted values: `test`, `production`.
+</ParamField>
+
+## Media storage (Cloudinary)
+
+In production, all user-uploaded media (product images, etc.) is stored in Cloudinary instead of the local filesystem. All three variables are required.
+
+<ParamField path="CLOUDINARY_CLOUD_NAME" type="string" required>
+  Your Cloudinary cloud name, visible on the Cloudinary dashboard home page.
+
+  ```
+  CLOUDINARY_CLOUD_NAME=my-electrohome-cloud
+  ```
+</ParamField>
+
+<ParamField path="CLOUDINARY_API_KEY" type="string" required>
+  Cloudinary API key. Found under **Settings → Access keys** in the Cloudinary dashboard.
+</ParamField>
+
+<ParamField path="CLOUDINARY_API_SECRET" type="string" required>
+  Cloudinary API secret. Found next to the API key. Treat this like a password — do not expose it in client-side code.
+</ParamField>
+
+## Complete `.env` example
+
+Copy the block below into a `.env` file at the project root for local testing with the production settings module. Replace every placeholder value.
+
+```env .env
+# Django core
+SECRET_KEY=replace-with-a-long-random-string
+ALLOWED_HOSTS=localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=http://localhost:8000
+
+# Database
+DATABASE_URL=postgresql://postgres:password@localhost:5432/electrohome
+
+# Email
+EMAIL_HOST_USER=noreply@example.com
+EMAIL_HOST_PASSWORD=your-gmail-app-password
+
+# Wompi payments
+WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxxxxxxxx
+WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxxxxxxxx
+WOMPI_ENVIRONMENT=test
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=your-api-secret
+```
+
+<Warning>
+  Add `.env` to your `.gitignore` file so it is never committed. Commit only the `.env` example file (with placeholder values) if you want to document the expected variables for other developers.
+</Warning>
+
+## Loading `.env` locally
+
+Install `python-dotenv` and call `load_dotenv()` at the top of your settings file, or use `django-environ`. Alternatively, export the variables in your shell before running management commands:
+
+```bash
+export $(cat .env | xargs)
+python manage.py runserver --settings=electrohome.Settings.production
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Database" icon="database" href="/configuration/database">
+    Configure PostgreSQL with DATABASE_URL and run migrations
+  </Card>
+  <Card title="Deploy to Render" icon="cloud" href="/deployment/render">
+    Add environment variables to your Render web service
+  </Card>
+</CardGroup>

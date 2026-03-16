@@ -1,0 +1,153 @@
+---
+title: "Deploy to Render"
+description: "Step-by-step guide to deploying ElectroHome on Render with a managed PostgreSQL database."
+---
+
+Render is the primary supported deployment platform for ElectroHome. This guide walks through creating the Web Service, attaching a database, and configuring all required environment variables.
+
+## Prerequisites
+
+- A [Render account](https://render.com)
+- The ElectroHome repository pushed to GitHub
+- A [Cloudinary account](https://cloudinary.com) with your cloud name, API key, and API secret
+- A [Wompi account](https://wompi.co) with public and private keys
+- A Gmail address with an [App Password](https://support.google.com/accounts/answer/185833) configured
+
+## Deployment steps
+
+<Steps>
+  <Step title="Create a PostgreSQL database">
+    In the Render dashboard, click **New** → **PostgreSQL**.
+
+    Configure the database:
+    - **Name**: `electrohome-db` (or any name you prefer)
+    - **Region**: choose the region closest to your users
+    - **Plan**: Free tier is sufficient for development; upgrade for production workloads
+
+    After creation, open the database page and copy the **Internal Database URL** (use Internal if your web service is in the same region) or the **External Database URL**. You will use this as `DATABASE_URL`.
+  </Step>
+
+  <Step title="Create a Web Service">
+    Click **New** → **Web Service** in the Render dashboard.
+
+    Select **Build and deploy from a Git repository**, then connect your GitHub account and choose the ElectroHome repository.
+  </Step>
+
+  <Step title="Configure the build and start commands">
+    In the service configuration form, set:
+
+    - **Build command**:
+      ```bash
+      ./electrohome/build.sh
+      ```
+
+    - **Start command**:
+      ```bash
+      gunicorn electrohome.wsgi:application --chdir electrohome
+      ```
+
+    <Note>
+    The `--chdir electrohome` flag moves into the `electrohome/` subdirectory before starting Gunicorn, so the `wsgi.py` module is resolved correctly relative to the Django project root.
+    </Note>
+
+    - **Root directory**: leave blank (the repository root)
+    - **Environment**: `Python 3`
+    - **Region**: match the region of your PostgreSQL database
+  </Step>
+
+  <Step title="Add environment variables">
+    Open the **Environment** tab of the Web Service and add the following key-value pairs.
+
+    See [Environment setup](/deployment/environment-setup) for details on how to generate or obtain each value.
+
+    **Required variables:**
+
+    | Variable | Value |
+    |---|---|
+    | `DJANGO_SETTINGS_MODULE` | `electrohome.Settings.production` |
+    | `SECRET_KEY` | A long random string — see [generating a secret key](/deployment/environment-setup#generating-a-secret-key) |
+    | `DATABASE_URL` | The PostgreSQL connection string from step 1 |
+    | `ALLOWED_HOSTS` | `ecommerce-electrohome-render.onrender.com` |
+    | `CSRF_TRUSTED_ORIGINS` | `https://ecommerce-electrohome-render.onrender.com` |
+    | `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name |
+    | `CLOUDINARY_API_KEY` | Your Cloudinary API key |
+    | `CLOUDINARY_API_SECRET` | Your Cloudinary API secret |
+    | `EMAIL_HOST_USER` | Your Gmail address |
+    | `EMAIL_HOST_PASSWORD` | Your Gmail App Password (not your login password) |
+    | `WOMPI_PUBLIC_KEY` | Your Wompi public key |
+    | `WOMPI_PRIVATE_KEY` | Your Wompi private key |
+    | `WOMPI_ENVIRONMENT` | `test` for sandbox, `production` for live payments |
+
+    <Warning>
+    Set `ALLOWED_HOSTS` to the domain **without** `https://`. Set `CSRF_TRUSTED_ORIGINS` to the domain **with** `https://` and no trailing slash. Mixing these up causes CSRF errors or 400 responses.
+    </Warning>
+  </Step>
+
+  <Step title="Deploy the service">
+    Click **Create Web Service**. Render will:
+
+    1. Clone the repository
+    2. Run `./electrohome/build.sh`, which installs dependencies, collects static files, runs migrations, and configures the Site domain
+    3. Start Gunicorn
+
+    You can follow the build log in real time from the **Logs** tab. A successful build ends with:
+
+    ```
+    Build completado exitosamente.
+    ```
+
+    Once the deploy finishes, your service is live at `https://ecommerce-electrohome-render.onrender.com`.
+  </Step>
+
+  <Step title="Create a superuser">
+    Open the **Shell** tab in the Render dashboard for your Web Service and run:
+
+    ```bash
+    python manage.py createsuperuser --settings=electrohome.Settings.production
+    ```
+
+    Follow the prompts to set a username, email, and password. You can then log in to the Django admin at `/admin/`.
+  </Step>
+</Steps>
+
+## Site domain configuration
+
+The `build.sh` script automatically sets the Django Sites framework domain to `ecommerce-electrohome-render.onrender.com` with `SITE_ID=7`. This is required for django-allauth's OAuth callbacks to generate correct redirect URLs.
+
+If you deploy to a custom domain, update the domain in `build.sh` and set `SITE_ID` accordingly, then redeploy.
+
+## Automatic deploys
+
+Render automatically redeploys the service on every push to the connected branch (typically `main`). Each deploy runs `build.sh` again, so migrations and static file collection stay current.
+
+To trigger a manual deploy, click **Manual Deploy** → **Deploy latest commit** from the Render dashboard.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Build fails with 'permission denied' on build.sh">
+    Ensure `build.sh` is executable in your repository:
+
+    ```bash
+    git update-index --chmod=+x electrohome/build.sh
+    git commit -m "make build.sh executable"
+    git push
+    ```
+  </Accordion>
+
+  <Accordion title="CSRF verification failed">
+    Verify that `CSRF_TRUSTED_ORIGINS` includes the full origin with `https://` and no trailing slash:
+
+    ```
+    CSRF_TRUSTED_ORIGINS=https://ecommerce-electrohome-render.onrender.com
+    ```
+  </Accordion>
+
+  <Accordion title="Static files return 404">
+    Confirm that `collectstatic` ran successfully in the build log. If `STATICFILES_STORAGE` is not set to the Whitenoise backend, static files will not be served. Check that `DJANGO_SETTINGS_MODULE` is set to `electrohome.Settings.production`.
+  </Accordion>
+
+  <Accordion title="Images not loading">
+    Confirm all three Cloudinary variables are set: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`. An incorrect API secret causes upload and retrieval failures.
+  </Accordion>
+</AccordionGroup>

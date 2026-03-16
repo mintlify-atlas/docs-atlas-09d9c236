@@ -1,0 +1,226 @@
+---
+title: "Settings"
+description: "Understand ElectroHome's modular settings architecture and how to switch between development and production configurations."
+---
+
+ElectroHome uses a modular settings layout. The root `electrohome/settings.py` file serves as the default development configuration, while the `electrohome/Settings/` directory holds separate files for base shared settings, local overrides, and production.
+
+## Settings file structure
+
+<Tree>
+  <Tree.Folder name="electrohome" defaultOpen>
+    <Tree.File name="settings.py" />
+    <Tree.Folder name="Settings" defaultOpen>
+      <Tree.File name="base.py" />
+      <Tree.File name="local.py" />
+      <Tree.File name="production.py" />
+      <Tree.File name="prod.py" />
+    </Tree.Folder>
+  </Tree.Folder>
+</Tree>
+
+| File | Purpose |
+|------|---------|
+| `electrohome/settings.py` | Default dev settings, used by `manage.py` out of the box |
+| `Settings/base.py` | Shared settings inherited by local and production |
+| `Settings/local.py` | Local development overrides on top of base |
+| `Settings/production.py` | Production-specific settings (PostgreSQL, email, Cloudinary, Wompi) |
+
+## How Django selects a settings module
+
+Django reads the `DJANGO_SETTINGS_MODULE` environment variable to determine which settings file to load. In `manage.py`, the default is set to the root dev file:
+
+```python manage.py
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'electrohome.settings')
+```
+
+Because `setdefault` only applies when the variable is not already set, you can override it at runtime without editing `manage.py`.
+
+## Switching between settings
+
+<Tabs>
+  <Tab title="Development (default)">
+    Run the development server using the default `electrohome/settings.py`:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    No extra flags needed. `manage.py` sets `DJANGO_SETTINGS_MODULE` to `electrohome.settings` automatically.
+  </Tab>
+  <Tab title="Production settings locally">
+    To test the production configuration on your machine, pass the `--settings` flag:
+
+    ```bash
+    python manage.py runserver --settings=electrohome.Settings.production
+    ```
+
+    You must have all required environment variables set before running with the production settings file.
+  </Tab>
+  <Tab title="Environment variable">
+    Set `DJANGO_SETTINGS_MODULE` before running any management command:
+
+    ```bash
+    export DJANGO_SETTINGS_MODULE=electrohome.Settings.production
+    python manage.py migrate
+    ```
+
+    This is the approach used by deployment platforms like Render.
+  </Tab>
+</Tabs>
+
+## Development settings (`electrohome/settings.py`)
+
+The root `settings.py` is optimised for local development. `DEBUG` is `True`, `ALLOWED_HOSTS` is empty (accepts all local requests), and the database is SQLite.
+
+```python electrohome/settings.py
+DEBUG = True
+ALLOWED_HOSTS = []
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+```
+
+<Note>
+  `SECRET_KEY` in this file is a placeholder. Never use the development secret key in production — generate a unique one and store it in an environment variable.
+</Note>
+
+## Production settings (`Settings/production.py`)
+
+The production file imports everything from the base file with `from .base import *`, then overrides only the values that differ in production.
+
+```python electrohome/Settings/production.py
+from .base import *
+import os
+import dj_database_url
+
+DEBUG = False
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600
+    )
+}
+```
+
+## Key settings categories
+
+### INSTALLED_APPS
+
+The default app list includes Django's built-in contributions. The production settings append Cloudinary apps for media storage:
+
+```python
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+]
+
+# Added in production.py
+INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+```
+
+### MIDDLEWARE
+
+The default middleware stack covers security, sessions, CSRF protection, authentication, and clickjacking prevention:
+
+```python
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+```
+
+<Tip>
+  `SecurityMiddleware` must remain the first entry in the list. When Whitenoise is added, insert `WhiteNoiseMiddleware` immediately after it.
+</Tip>
+
+### DATABASES
+
+See the [Database configuration](/configuration/database) page for full details on SQLite (development) and PostgreSQL (production) setup.
+
+### TEMPLATES
+
+Django's template engine is configured with `APP_DIRS: True`, which means Django automatically discovers templates inside each app's `templates/` subdirectory.
+
+```python
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+```
+
+### AUTH_PASSWORD_VALIDATORS
+
+Four built-in validators enforce password quality for local (non-OAuth) accounts:
+
+| Validator | What it checks |
+|-----------|----------------|
+| `UserAttributeSimilarityValidator` | Password is not too similar to the username or email |
+| `MinimumLengthValidator` | Password is at least 8 characters |
+| `CommonPasswordValidator` | Password is not on a common-passwords list |
+| `NumericPasswordValidator` | Password is not entirely numeric |
+
+## Development vs production comparison
+
+<Tabs>
+  <Tab title="Development">
+    | Setting | Value |
+    |---------|-------|
+    | `DEBUG` | `True` |
+    | `ALLOWED_HOSTS` | `[]` (all local hosts) |
+    | `DATABASES` | SQLite (`db.sqlite3`) |
+    | `EMAIL_BACKEND` | Console backend (no emails sent) |
+    | `STATICFILES_STORAGE` | Default Django storage |
+    | `DEFAULT_FILE_STORAGE` | Local filesystem |
+    | `CSRF_COOKIE_SECURE` | Not set (HTTP allowed) |
+    | `SECURE_SSL_REDIRECT` | Not set |
+  </Tab>
+  <Tab title="Production">
+    | Setting | Value |
+    |---------|-------|
+    | `DEBUG` | `False` |
+    | `ALLOWED_HOSTS` | From `ALLOWED_HOSTS` env var |
+    | `DATABASES` | PostgreSQL via `DATABASE_URL` |
+    | `EMAIL_BACKEND` | SMTP via Gmail (`smtp.gmail.com:465`) |
+    | `STATICFILES_STORAGE` | `whitenoise.storage.CompressedStaticFilesStorage` |
+    | `DEFAULT_FILE_STORAGE` | `cloudinary_storage.storage.MediaCloudinaryStorage` |
+    | `CSRF_COOKIE_SECURE` | `True` |
+    | `SECURE_SSL_REDIRECT` | `True` |
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" icon="key" href="/configuration/environment-variables">
+    All environment variables required by the production settings file
+  </Card>
+  <Card title="Database" icon="database" href="/configuration/database">
+    SQLite for development and PostgreSQL for production
+  </Card>
+</CardGroup>

@@ -1,0 +1,141 @@
+---
+title: "Authentication"
+description: "Google OAuth 2.0 login via django-allauth. Users sign in with their Google account — no password required."
+---
+
+## Overview
+
+ElectroHome uses [django-allauth](https://django-allauth.readthedocs.io/) to handle social authentication. In production, users log in exclusively through Google OAuth 2.0. No password-based registration is exposed — `allauth` manages the full OAuth flow and creates a Django user account automatically on first login.
+
+The relevant scopes requested from Google are `profile` and `email`. ElectroHome uses the email address as the primary identifier for the user account.
+
+## How the login flow works
+
+1. The user clicks **Sign in with Google** on the login page.
+2. Django redirects the user to Google's OAuth consent screen.
+3. The user grants access to their profile and email.
+4. Google redirects back to ElectroHome with an authorization code.
+5. `django-allauth` exchanges the code for tokens, retrieves the user's profile and email, and either logs in the existing account or creates a new one.
+6. The user lands on the dashboard, authenticated.
+
+<Note>
+Because `SOCIALACCOUNT_LOGIN_ON_GET = True` is set, ElectroHome skips the allauth intermediate confirmation page. The redirect from Google takes the user directly into the app.
+</Note>
+
+## Setting up Google OAuth
+
+### Step 1: Create a Google Cloud project
+
+<Steps>
+  <Step title="Open Google Cloud Console">
+    Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in with a Google account that will own the project.
+  </Step>
+  <Step title="Create a new project">
+    Click the project dropdown at the top of the page, then click **New Project**. Give it a name (e.g., `electrohome-prod`) and click **Create**.
+  </Step>
+  <Step title="Enable the Google+ API">
+    In the left sidebar, go to **APIs & Services → Library**. Search for **Google+ API** (also listed as "Google People API") and click **Enable**.
+  </Step>
+  <Step title="Configure the OAuth consent screen">
+    Go to **APIs & Services → OAuth consent screen**.
+
+    - Choose **External** for user type (unless you're using a Google Workspace organisation).
+    - Fill in **App name**, **User support email**, and **Developer contact information**.
+    - Under **Scopes**, add `openid`, `email`, and `profile`.
+    - Save and continue through the remaining steps.
+  </Step>
+  <Step title="Create OAuth credentials">
+    Go to **APIs & Services → Credentials** and click **Create Credentials → OAuth client ID**.
+
+    - Application type: **Web application**
+    - Name: `electrohome` (or any label)
+    - **Authorised JavaScript origins**: `https://your-domain.com`
+    - **Authorised redirect URIs**: `https://your-domain.com/accounts/google/login/callback/`
+
+    Click **Create**. Copy the **Client ID** and **Client secret** — you will need them in the next step.
+  </Step>
+</Steps>
+
+<Warning>
+The redirect URI must match exactly, including the trailing slash. A mismatch causes a `redirect_uri_mismatch` error from Google.
+</Warning>
+
+### Step 2: Add the Social Application in Django admin
+
+Google OAuth credentials are stored in the database via Django admin, not in environment variables.
+
+<Steps>
+  <Step title="Open Django admin">
+    Navigate to `/admin/` and log in with a superuser account.
+  </Step>
+  <Step title="Add a Social Application">
+    Go to **Social Applications** (under the **Social Accounts** section) and click **Add Social Application**.
+
+    | Field | Value |
+    |-------|-------|
+    | Provider | Google |
+    | Name | Google (or any label) |
+    | Client id | Your Google **Client ID** |
+    | Secret key | Your Google **Client secret** |
+    | Sites | Move your site from **Available sites** to **Chosen sites** |
+
+    Click **Save**.
+  </Step>
+</Steps>
+
+<Info>
+If the **Sites** list is empty or shows `example.com`, go to **Sites** in Django admin and update the domain to match your actual domain before adding the Social Application.
+</Info>
+
+## Production settings explained
+
+The following settings are configured in `electrohome/Settings/production.py`:
+
+```python
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
+SOCIALACCOUNT_QUERY_EMAIL = True
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+SOCIALACCOUNT_STORE_TOKENS = True
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_AUTO_SIGNUP = True
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        }
+    }
+}
+```
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `ACCOUNT_DEFAULT_HTTP_PROTOCOL` | `"https"` | Ensures all allauth-generated URLs (e.g., email confirmation links) use HTTPS in production. |
+| `SOCIALACCOUNT_QUERY_EMAIL` | `True` | Explicitly requests the user's email from Google during the OAuth flow. |
+| `SOCIALACCOUNT_EMAIL_REQUIRED` | `True` | Rejects OAuth logins where no email address is returned. Google always returns an email with the `email` scope, so this acts as a safety guard. |
+| `SOCIALACCOUNT_STORE_TOKENS` | `True` | Saves the OAuth access token in the database after login. Useful if you later need to make API calls to Google on behalf of the user. |
+| `SOCIALACCOUNT_LOGIN_ON_GET` | `True` | Skips the allauth intermediate "confirm login" page. The user is redirected straight into the app after returning from Google. |
+| `SOCIALACCOUNT_AUTO_SIGNUP` | `True` | Automatically creates a new Django user account when a Google user logs in for the first time. The user does not need to fill in a registration form. |
+| `ACCOUNT_EMAIL_VERIFICATION` | `'none'` | Disables allauth's email verification step for standard accounts. Because users log in through Google (whose email is already verified), a second verification email is unnecessary. |
+| `SOCIALACCOUNT_EMAIL_VERIFICATION` | `'none'` | Disables email verification specifically for social (OAuth) accounts. Without this, allauth may block login until the user clicks a verification link, which is redundant for Google-authenticated emails. |
+| `SCOPE` | `['profile', 'email']` | The OAuth scopes requested from Google. `profile` grants access to the user's name and avatar; `email` grants access to their email address. |
+| `access_type` | `'online'` | Requests a standard (non-refresh) token. Use `'offline'` only if you need to call Google APIs when the user is not logged in. |
+
+## Required OAuth scopes
+
+ElectroHome requests two scopes from Google:
+
+- **`profile`** — the user's display name, profile picture URL, and Google account ID.
+- **`email`** — the user's primary Google email address.
+
+Both scopes are required. `email` is used as the unique identifier when creating or looking up the Django user account.
+
+## Local development
+
+For local development, you can use the same Google OAuth credentials with `http://localhost:8000` added as an authorised origin and `http://localhost:8000/accounts/google/login/callback/` as an authorised redirect URI.
+
+<Tip>
+Add both `http://localhost:8000` and your production domain to the same OAuth client to avoid creating a separate credential set for each environment.
+</Tip>

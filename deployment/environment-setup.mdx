@@ -1,0 +1,137 @@
+---
+title: "Environment setup"
+description: "Configure all required environment variables for ElectroHome in production."
+---
+
+ElectroHome reads its secrets and external service credentials from environment variables at runtime. None of these values should be hardcoded in source code or committed to version control.
+
+## Complete variable reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `DJANGO_SETTINGS_MODULE` | Yes | Must be `electrohome.Settings.production` to load production settings |
+| `SECRET_KEY` | Yes | Django cryptographic secret — used for signing cookies, sessions, and tokens |
+| `DATABASE_URL` | Yes | PostgreSQL connection string in the format `postgres://user:password@host:port/dbname` |
+| `ALLOWED_HOSTS` | Yes | Comma-separated list of allowed hostnames, e.g. `yourdomain.onrender.com` (no `https://`) |
+| `CSRF_TRUSTED_ORIGINS` | Yes | Comma-separated list of trusted origins for CSRF, e.g. `https://yourdomain.onrender.com` (with `https://`, no trailing slash) |
+| `CLOUDINARY_CLOUD_NAME` | Yes | Your Cloudinary cloud name, found in the Cloudinary dashboard |
+| `CLOUDINARY_API_KEY` | Yes | Your Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Yes | Your Cloudinary API secret |
+| `EMAIL_HOST_USER` | Yes | Gmail address used to send transactional emails |
+| `EMAIL_HOST_PASSWORD` | Yes | Gmail App Password — not your Gmail login password |
+| `WOMPI_PUBLIC_KEY` | Yes | Wompi public key for the frontend payment widget |
+| `WOMPI_PRIVATE_KEY` | Yes | Wompi private key for server-side API calls |
+| `WOMPI_ENVIRONMENT` | No | `test` (default) for sandbox, `production` for live transactions |
+
+## Generating a secret key
+
+Generate a cryptographically secure `SECRET_KEY` using Python's `secrets` module:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+Alternatively, use Django's signing module:
+
+```bash
+python -c "from django.core.signing import get_cookie_signer; print(get_cookie_signer().key)"
+```
+
+Copy the output and set it as the `SECRET_KEY` environment variable. Generate a new key for each environment — do not reuse development keys in production.
+
+<Warning>
+If you rotate the `SECRET_KEY` in production, all existing sessions and signed cookies are immediately invalidated. All logged-in users will be signed out.
+</Warning>
+
+## Gmail App Password
+
+ElectroHome uses Gmail's SMTP server on port 465 with SSL. Gmail requires an **App Password** for SMTP authentication — your regular Gmail login password will not work.
+
+<Steps>
+  <Step title="Enable 2-Step Verification">
+    Go to your [Google Account security settings](https://myaccount.google.com/security) and enable **2-Step Verification** if it is not already on. App Passwords are only available on accounts with 2-Step Verification enabled.
+  </Step>
+
+  <Step title="Create an App Password">
+    Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+
+    Under **Select app**, choose **Other (custom name)** and enter `ElectroHome`. Click **Generate**.
+
+    Google displays a 16-character password. Copy it immediately — it will not be shown again.
+  </Step>
+
+  <Step title="Set the environment variables">
+    ```bash
+    EMAIL_HOST_USER=your-address@gmail.com
+    EMAIL_HOST_PASSWORD=abcd efgh ijkl mnop
+    ```
+
+    <Note>
+    The App Password may be displayed with spaces (e.g., `abcd efgh ijkl mnop`). You can include or omit the spaces — both formats work.
+    </Note>
+  </Step>
+</Steps>
+
+## Wompi environment
+
+Wompi supports two environments controlled by the `WOMPI_ENVIRONMENT` variable:
+
+| Value | Description |
+|---|---|
+| `test` | Sandbox mode — uses `https://sandbox.wompi.co/v1`. No real transactions are processed. |
+| `production` | Live mode — real card charges are processed. Use only after end-to-end testing in sandbox. |
+
+<Info>
+The `WOMPI_API_URL` is hardcoded to `https://sandbox.wompi.co/v1` in `production.py`. If you move to live payments, update this URL to `https://production.wompi.co/v1` in your settings or override it via an environment variable.
+</Info>
+
+## ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS formats
+
+These two variables are easy to misconfigure. The formats are different:
+
+| Variable | Correct format | Incorrect |
+|---|---|---|
+| `ALLOWED_HOSTS` | `yourdomain.onrender.com` | `https://yourdomain.onrender.com` |
+| `CSRF_TRUSTED_ORIGINS` | `https://yourdomain.onrender.com` | `yourdomain.onrender.com` or `https://yourdomain.onrender.com/` |
+
+Both variables accept comma-separated values if you have multiple domains:
+
+```bash
+ALLOWED_HOSTS=ecommerce-electrohome-render.onrender.com,www.electrohome.com
+CSRF_TRUSTED_ORIGINS=https://ecommerce-electrohome-render.onrender.com,https://www.electrohome.com
+```
+
+## Example .env file
+
+The following example shows all variables in a `.env` file format, useful for local reference before pasting values into your platform's dashboard.
+
+<Warning>
+Never commit a `.env` file to version control. Add `.env` to your `.gitignore`. The values below are placeholders only.
+</Warning>
+
+```env .env.example
+# Django core
+DJANGO_SETTINGS_MODULE=electrohome.Settings.production
+SECRET_KEY=replace-with-a-long-random-string-generated-by-secrets-token-urlsafe
+
+# Database
+DATABASE_URL=postgres://user:password@hostname:5432/electrohome_db
+
+# Allowed hosts and CSRF
+ALLOWED_HOSTS=ecommerce-electrohome-render.onrender.com
+CSRF_TRUSTED_ORIGINS=https://ecommerce-electrohome-render.onrender.com
+
+# Cloudinary (media storage)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=your-api-secret
+
+# Email (Gmail SMTP)
+EMAIL_HOST_USER=your-address@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+
+# Wompi payments
+WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxxxxxxxx
+WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxxxxxxxx
+WOMPI_ENVIRONMENT=test
+```

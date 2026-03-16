@@ -1,0 +1,256 @@
+---
+title: "Base settings"
+description: "Reference for electrohome/settings.py — the default development configuration loaded by manage.py."
+---
+
+This file is the root settings module for ElectroHome. `manage.py` loads it by default via `DJANGO_SETTINGS_MODULE=electrohome.settings`. The production settings file imports from this base and overrides specific values.
+
+<Warning>
+  Several values in this file are intentionally insecure for development. Do not deploy with `DEBUG = True`, the default `SECRET_KEY`, or an empty `ALLOWED_HOSTS`.
+</Warning>
+
+## Paths
+
+### `BASE_DIR`
+
+```python
+BASE_DIR = Path(__file__).resolve().parent.parent
+```
+
+The absolute path to the project root directory (the folder containing `manage.py`). Used to construct paths for the database file, templates, and static files. Resolving two levels up from `settings.py` places `BASE_DIR` at the repository root.
+
+---
+
+## Core settings
+
+### `SECRET_KEY`
+
+```python
+SECRET_KEY = 'django-insecure-j!&amsgcyeces&3lvzhfy*al7(zowo@227_y*$gt51bws(4lgm'
+```
+
+<Warning>
+  The default value is a publicly known insecure key. You must replace it with a unique, unpredictable value in production. Generate one with:
+
+  ```bash
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  ```
+
+  Store the production key in an environment variable and never commit it to version control.
+</Warning>
+
+Used by Django for cryptographic signing of cookies, sessions, CSRF tokens, and password reset links. Any change to this value invalidates all existing signed data.
+
+---
+
+### `DEBUG`
+
+```python
+DEBUG = True
+```
+
+<Warning>
+  `DEBUG = True` must never be used in production. It exposes full stack traces, local variables, and settings values in error pages.
+</Warning>
+
+When `True`, Django shows detailed error pages instead of generic 500/404 responses, enables the debug toolbar (if installed), and serves static files directly. The production settings override this to `False`.
+
+---
+
+### `ALLOWED_HOSTS`
+
+```python
+ALLOWED_HOSTS = []
+```
+
+An empty list is only valid when `DEBUG = True` — Django then accepts requests from `localhost` and `127.0.0.1`. In production this list must contain every hostname or IP address that can be used to reach the server.
+
+Example production value: `['electrohome.example.com', 'www.electrohome.example.com']`
+
+The production settings file reads this from the `ALLOWED_HOSTS` environment variable.
+
+---
+
+## Installed apps
+
+```python
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+]
+```
+
+| App | Purpose |
+|-----|---------|
+| `django.contrib.admin` | Built-in admin interface at `/admin/`. |
+| `django.contrib.auth` | User authentication, permissions, and groups. |
+| `django.contrib.contenttypes` | Generic relations framework; required by `auth` and `admin`. |
+| `django.contrib.sessions` | Server-side session storage. |
+| `django.contrib.messages` | Flash messaging framework for one-time notifications. |
+| `django.contrib.staticfiles` | Static file collection and serving via `collectstatic`. |
+
+The production settings append `cloudinary_storage` and `cloudinary` to this list for media file hosting.
+
+---
+
+## Middleware
+
+```python
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+```
+
+Middleware is applied in order on the way in and in reverse order on the way out.
+
+| Middleware | Purpose |
+|------------|---------|
+| `SecurityMiddleware` | Enforces HTTPS redirects, HSTS, and other security headers. In production, Whitenoise static file serving is also added here. |
+| `SessionMiddleware` | Manages session data using the configured session backend. Must appear before any middleware that uses sessions. |
+| `CommonMiddleware` | Handles URL normalization (trailing slashes) and `DISALLOWED_USER_AGENTS`. |
+| `CsrfViewMiddleware` | Validates CSRF tokens on `POST`, `PUT`, `PATCH`, and `DELETE` requests. |
+| `AuthenticationMiddleware` | Attaches the authenticated user to each request object via `request.user`. |
+| `MessageMiddleware` | Enables the flash messaging framework. Requires `SessionMiddleware`. |
+| `XFrameOptionsMiddleware` | Adds the `X-Frame-Options` header to prevent clickjacking. |
+
+---
+
+## URL configuration
+
+### `ROOT_URLCONF`
+
+```python
+ROOT_URLCONF = 'electrohome.urls'
+```
+
+Points Django to `electrohome/urls.py` as the top-level URL resolver. All URL patterns are registered from this module.
+
+---
+
+## Templates
+
+```python
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+```
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `BACKEND` | `django.template.backends.django.DjangoTemplates` | Uses Django's built-in template engine. |
+| `DIRS` | `[]` | No additional template search directories beyond app templates. |
+| `APP_DIRS` | `True` | Django searches for a `templates/` subdirectory inside each installed app. |
+| `context_processors.request` | — | Makes `request` available in every template context. |
+| `context_processors.auth` | — | Adds `user` and `perms` to the template context. |
+| `context_processors.messages` | — | Adds the flash messages queue to the template context. |
+
+---
+
+## WSGI
+
+### `WSGI_APPLICATION`
+
+```python
+WSGI_APPLICATION = 'electrohome.wsgi.application'
+```
+
+Points to the WSGI callable in `electrohome/wsgi.py`. Used by WSGI servers such as Gunicorn when deploying to Render or Railway.
+
+---
+
+## Database
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+```
+
+The development database is SQLite, stored as `db.sqlite3` in the project root. No additional configuration or running database server is required.
+
+<Note>
+  SQLite is only suitable for local development and single-process testing. Production uses PostgreSQL, configured in `settings/production.py` via `dj_database_url`.
+</Note>
+
+---
+
+## Authentication
+
+### `AUTH_PASSWORD_VALIDATORS`
+
+```python
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]
+```
+
+Applied whenever a password is set or changed through Django's built-in forms and `manage.py createsuperuser`.
+
+| Validator | Description |
+|-----------|-------------|
+| `UserAttributeSimilarityValidator` | Rejects passwords that closely resemble the user's username, first name, last name, or email. |
+| `MinimumLengthValidator` | Requires at least 8 characters (Django default). |
+| `CommonPasswordValidator` | Rejects passwords from a list of 20,000 common passwords. |
+| `NumericPasswordValidator` | Rejects passwords that are entirely numeric. |
+
+---
+
+## Internationalization
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `LANGUAGE_CODE` | `'en-us'` | Default language for built-in Django strings (form labels, error messages, admin UI). |
+| `TIME_ZONE` | `'UTC'` | The timezone used for `datetime` objects stored in the database. |
+| `USE_I18N` | `True` | Enables Django's translation framework. |
+| `USE_TZ` | `True` | Stores datetimes as timezone-aware UTC values. Recommended for all projects. |
+
+---
+
+## Static files
+
+### `STATIC_URL`
+
+```python
+STATIC_URL = 'static/'
+```
+
+The URL prefix for serving static files (CSS, JavaScript, images). In development, `django.contrib.staticfiles` serves files from each app's `static/` subdirectory at this path. In production, Whitenoise serves pre-collected files from `STATIC_ROOT`.
+
+---
+
+## Models
+
+### `DEFAULT_AUTO_FIELD`
+
+```python
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+```
+
+Sets the default primary key type for all models that don't explicitly define one. `BigAutoField` uses a 64-bit integer, avoiding the overflow risk of the older 32-bit `AutoField` for large datasets.

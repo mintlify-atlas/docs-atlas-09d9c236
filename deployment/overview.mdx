@@ -1,0 +1,95 @@
+---
+title: "Deployment overview"
+description: "Deploy ElectroHome to Render or Railway using the production build script and environment variables."
+---
+
+ElectroHome is designed to run on cloud platforms that support Python web services and managed PostgreSQL databases. The production configuration handles SSL, secure cookies, Cloudinary media storage, and Whitenoise-served static files.
+
+## Supported platforms
+
+<CardGroup cols={2}>
+  <Card title="Render" icon="cloud" href="/deployment/render">
+    Deploy a Web Service connected to your GitHub repo. Render provides a managed PostgreSQL add-on and automatic deploys on push.
+  </Card>
+  <Card title="Railway" icon="train-track">
+    Alternative platform with a similar setup — connect your repo, add a PostgreSQL plugin, and configure the same environment variables.
+  </Card>
+</CardGroup>
+
+## How the build script works
+
+The `build.sh` script at the project root runs automatically during each deploy. It performs four steps in order:
+
+```bash build.sh
+#!/usr/bin/env bash
+set -o errexit
+
+# 1. Install Python dependencies
+pip install -r requirements.txt
+
+# 2. Collect static files into STATIC_ROOT for Whitenoise
+python manage.py collectstatic --no-input --settings=electrohome.settings.production
+
+# 3. Apply any pending database migrations
+python manage.py migrate --settings=electrohome.settings.production
+
+# 4. Create or update the Django Sites framework record
+python manage.py shell --settings=electrohome.settings.production -c "
+from django.contrib.sites.models import Site
+site, _ = Site.objects.get_or_create(id=7)
+site.domain = 'ecommerce-electrohome-render.onrender.com'
+site.name = 'ElectroHome'
+site.save()
+"
+```
+
+<Note>
+The `collectstatic` and `migrate` commands are run with `--settings=electrohome.settings.production` to ensure production settings are active during the build, even if `DJANGO_SETTINGS_MODULE` is not yet in scope at that point.
+</Note>
+
+## Django settings module
+
+You must set the following environment variable on your platform so Django loads the production configuration at runtime:
+
+```bash
+DJANGO_SETTINGS_MODULE=electrohome.Settings.production
+```
+
+<Warning>
+Without this variable, Django falls back to the base or development settings, which enables `DEBUG=True` and uses SQLite — both unsafe in production.
+</Warning>
+
+## Production requirements checklist
+
+Before deploying, make sure you have all of the following:
+
+| Requirement | What you need |
+|---|---|
+| PostgreSQL database | A managed database on Render, Railway, or any provider — copy the `DATABASE_URL` connection string |
+| Cloudinary account | Free account at [cloudinary.com](https://cloudinary.com) — you need `CLOUD_NAME`, `API_KEY`, and `API_SECRET` |
+| Wompi keys | A Wompi account with `PUBLIC_KEY` and `PRIVATE_KEY` — use sandbox keys for testing |
+| Gmail credentials | A Gmail address and an [App Password](https://support.google.com/accounts/answer/185833) for transactional email |
+| Django `SECRET_KEY` | A long random string — see [Environment setup](/deployment/environment-setup) for how to generate one |
+
+## Security settings in production
+
+The `production.py` settings file enables the following security features automatically when the service starts:
+
+| Setting | Value | Effect |
+|---|---|---|
+| `DEBUG` | `False` | Disables the debug toolbar and detailed error pages |
+| `SECURE_SSL_REDIRECT` | `True` | Redirects all HTTP requests to HTTPS |
+| `CSRF_COOKIE_SECURE` | `True` | Sends the CSRF cookie only over HTTPS |
+| `SESSION_COOKIE_SECURE` | `True` | Sends the session cookie only over HTTPS |
+| `SECURE_PROXY_SSL_HEADER` | `HTTP_X_FORWARDED_PROTO: https` | Trusts the SSL header forwarded by Render's proxy |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Deploy to Render" icon="cloud" href="/deployment/render">
+    Step-by-step guide to creating a Web Service, adding PostgreSQL, and configuring all environment variables
+  </Card>
+  <Card title="Environment setup" icon="key" href="/deployment/environment-setup">
+    Full reference for every environment variable, with examples and instructions for generating secrets
+  </Card>
+</CardGroup>

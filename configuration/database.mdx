@@ -1,0 +1,173 @@
+---
+title: "Database"
+description: "Configure SQLite for local development and PostgreSQL for production using dj-database-url and the DATABASE_URL environment variable."
+---
+
+ElectroHome uses SQLite for local development and PostgreSQL in production. The switch between them is handled entirely through the settings files — your application code does not change.
+
+## Local development (SQLite)
+
+The default `electrohome/settings.py` configures a SQLite database stored in a single file at the project root:
+
+```python electrohome/settings.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+```
+
+SQLite requires no installation or credentials. The `db.sqlite3` file is created automatically when you run migrations for the first time.
+
+<Note>
+  `db.sqlite3` is excluded from version control in `.gitignore`. Each developer maintains their own local database.
+</Note>
+
+## Production database (PostgreSQL)
+
+In production, `Settings/production.py` uses [`dj-database-url`](https://pypi.org/project/dj-database-url/) to parse a `DATABASE_URL` connection string into Django's `DATABASES` dictionary:
+
+```python electrohome/Settings/production.py
+import dj_database_url
+import os
+
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600
+    )
+}
+```
+
+### DATABASE_URL format
+
+The connection string follows the standard URL format:
+
+```
+postgresql://USER:PASSWORD@HOST:PORT/DBNAME
+```
+
+For example:
+
+```bash
+DATABASE_URL=postgresql://electrohome_user:s3cr3t@dpg-abc123.oregon-postgres.render.com:5432/electrohome_db
+```
+
+### Connection pooling
+
+The `conn_max_age=600` argument keeps each database connection open for up to 600 seconds (10 minutes) instead of closing it after every request. This reduces connection overhead on high-traffic deployments.
+
+| Parameter | Value | Effect |
+|-----------|-------|--------|
+| `conn_max_age` | `600` | Reuse connections for up to 10 minutes |
+| `conn_max_age` | `0` | Close connection after every request (Django default) |
+| `conn_max_age` | `None` | Keep connections open indefinitely |
+
+<Tip>
+  `conn_max_age=600` is a good default for most deployments. If you use a connection pooler like PgBouncer, set it to `0` to avoid conflicts.
+</Tip>
+
+## Running migrations
+
+After configuring the database, apply all migrations to create the schema:
+
+<Steps>
+  <Step title="Apply migrations">
+    ```bash
+    python manage.py migrate
+    ```
+
+    This runs all pending migrations in dependency order and creates the initial tables for Django's built-in apps (auth, sessions, admin, etc.) as well as your custom models.
+  </Step>
+  <Step title="Verify the migration state">
+    ```bash
+    python manage.py showmigrations
+    ```
+
+    Every migration should show `[X]` to indicate it has been applied. An empty `[ ]` means the migration is pending.
+  </Step>
+  <Step title="Create a superuser (first-time setup)">
+    ```bash
+    python manage.py createsuperuser
+    ```
+
+    Follow the prompts to set a username, email, and password for the Django admin interface at `/admin/`.
+  </Step>
+</Steps>
+
+<Warning>
+  Run `migrate` every time you pull changes that include new migration files. Skipping this step causes `OperationalError: no such table` errors at runtime.
+</Warning>
+
+## Creating the database on Render
+
+Render provides managed PostgreSQL databases that integrate directly with Render web services.
+
+<Steps>
+  <Step title="Create a PostgreSQL instance">
+    In the Render dashboard, click **New → PostgreSQL**. Choose a name, region, and plan. Render creates the database and generates a connection string.
+  </Step>
+  <Step title="Copy the internal database URL">
+    On the database's **Info** page, copy the **Internal Database URL**. Use the internal URL (not the external one) so your web service connects over Render's private network — faster and no data egress charges.
+  </Step>
+  <Step title="Add DATABASE_URL to your web service">
+    Navigate to your web service on Render. Go to **Environment** and add a new variable:
+
+    | Key | Value |
+    |-----|-------|
+    | `DATABASE_URL` | The internal URL copied in the previous step |
+
+    Render injects this variable at runtime, which the production settings file reads via `os.environ.get('DATABASE_URL')`.
+  </Step>
+  <Step title="Run migrations on deploy">
+    Add the `migrate` command to your build script so migrations run automatically on every deployment:
+
+    ```bash build.sh
+    #!/usr/bin/env bash
+    set -o errexit
+
+    pip install -r requirements.txt
+    python manage.py collectstatic --no-input
+    python manage.py migrate
+    ```
+
+    Render executes `build.sh` before starting the web service process.
+  </Step>
+</Steps>
+
+## Checking the connection
+
+To confirm Django can reach the database, open a Django shell:
+
+```bash
+python manage.py dbshell
+```
+
+This drops you into a PostgreSQL (`psql`) prompt. Type `\dt` to list all tables. Exit with `\q`.
+
+Alternatively, run a quick check from the Django shell:
+
+```bash
+python manage.py shell
+```
+
+```python
+from django.db import connection
+cursor = connection.cursor()
+cursor.execute("SELECT version();")
+print(cursor.fetchone())
+```
+
+A successful response prints the PostgreSQL server version.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" icon="key" href="/configuration/environment-variables">
+    Full list of environment variables, including DATABASE_URL
+  </Card>
+  <Card title="Deploy to Render" icon="cloud" href="/deployment/render">
+    Step-by-step Render deployment guide with database setup
+  </Card>
+</CardGroup>

@@ -1,0 +1,120 @@
+---
+title: "Media storage"
+description: "Cloudinary replaces Django's local media storage in production, providing persistent file storage across deployments."
+---
+
+## Overview
+
+By default, Django stores uploaded files (images, documents) on the local filesystem. This works fine in development but causes two problems in production on platforms like Render or Railway:
+
+1. **Ephemeral filesystems** — each deployment replaces the container's filesystem, deleting any uploaded files.
+2. **Horizontal scaling** — multiple instances do not share a local disk.
+
+ElectroHome solves this by using [Cloudinary](https://cloudinary.com) as the file storage backend in production. All `ImageField` and `FileField` uploads are automatically sent to Cloudinary. Django code that reads or writes media files continues to work unchanged — the swap is transparent at the storage layer.
+
+## How it works
+
+Django's file storage system is pluggable via the `DEFAULT_FILE_STORAGE` setting. In `electrohome/Settings/production.py`, this is overridden:
+
+```python
+INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+}
+```
+
+- `cloudinary_storage` and `cloudinary` are appended to `INSTALLED_APPS` only in production, keeping them out of local development.
+- `DEFAULT_FILE_STORAGE` replaces Django's default `FileSystemStorage` with Cloudinary's storage backend.
+- `CLOUDINARY_STORAGE` provides the credentials the backend needs to authenticate with Cloudinary's API.
+
+No changes to models, views, or templates are required. Any field defined as `models.ImageField()` or `models.FileField()` will write to and read from Cloudinary automatically in production.
+
+## Local development vs production
+
+<Tabs>
+  <Tab title="Local development">
+    In local development, `DEFAULT_FILE_STORAGE` is not overridden. Django uses its default `FileSystemStorage`, which writes files to the `MEDIA_ROOT` directory on disk.
+
+    ```python
+    # No override in local.py — Django default applies
+    # Files are saved to MEDIA_ROOT (e.g., media/)
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    ```
+
+    This is faster and requires no external credentials for local work.
+  </Tab>
+  <Tab title="Production">
+    In production, `cloudinary_storage` intercepts all file save and read operations and routes them through the Cloudinary API.
+
+    ```python
+    INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    ```
+
+    Uploaded files are stored in your Cloudinary account and served from Cloudinary's CDN.
+  </Tab>
+</Tabs>
+
+## Setting up Cloudinary
+
+<Steps>
+  <Step title="Create a Cloudinary account">
+    Go to [cloudinary.com](https://cloudinary.com) and sign up for a free account. The free tier includes 25 GB of storage and 25 GB of monthly bandwidth, which is sufficient for most small-to-medium deployments.
+  </Step>
+  <Step title="Find your credentials">
+    After logging in, open the [Cloudinary console](https://console.cloudinary.com). Your credentials are displayed on the dashboard:
+
+    | Field | Description |
+    |-------|-------------|
+    | **Cloud name** | A unique name for your Cloudinary environment (e.g., `dxyz1234`). |
+    | **API key** | A numeric key used to authenticate API requests. |
+    | **API secret** | A secret string paired with the API key. Keep this private. |
+  </Step>
+  <Step title="Set environment variables">
+    Add the three credentials to your deployment environment:
+
+    ```bash
+    CLOUDINARY_CLOUD_NAME=your_cloud_name
+    CLOUDINARY_API_KEY=your_api_key
+    CLOUDINARY_API_SECRET=your_api_secret
+    ```
+
+    On Render, set these under **Environment → Environment Variables** for your web service. On Railway, use the **Variables** tab.
+  </Step>
+</Steps>
+
+<Warning>
+`CLOUDINARY_API_SECRET` must never be committed to version control or exposed in client-side code. It grants full write access to your Cloudinary account.
+</Warning>
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name, visible in the console dashboard. |
+| `CLOUDINARY_API_KEY` | The API key from the Cloudinary console. Safe to expose in server-side code. |
+| `CLOUDINARY_API_SECRET` | The API secret from the Cloudinary console. Treat like a password — never expose publicly. |
+
+## Accessing media URLs in templates
+
+Cloudinary storage works transparently with Django's standard template tags. Use the `.url` attribute on any `ImageField` or `FileField` instance — Django resolves it to the full Cloudinary CDN URL automatically.
+
+```html
+<!-- In a Django template -->
+<img src="{{ product.image.url }}" alt="{{ product.name }}">
+```
+
+In production this renders as a Cloudinary URL, for example:
+
+```
+https://res.cloudinary.com/your_cloud_name/image/upload/v1234567890/products/example.jpg
+```
+
+In local development it renders as a local path (e.g., `/media/products/example.jpg`), which Django's development server serves directly.
+
+<Tip>
+You do not need to change any template code when switching between local and production environments. The storage backend swap is completely transparent to templates and views.
+</Tip>

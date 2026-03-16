@@ -1,0 +1,92 @@
+---
+title: "Introduction"
+description: "Welcome to ElectroHome — a Django-based ecommerce platform for electronics and home goods."
+---
+
+# ElectroHome
+
+ElectroHome is a full-featured ecommerce web application built with Django 5.2, designed for selling electronics and home goods. It provides a complete shopping experience with user authentication, secure payments, and cloud-based media management.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get your development environment running in minutes
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/settings">
+    Configure settings for local and production environments
+  </Card>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Set up Google OAuth and user account management
+  </Card>
+  <Card title="Payments" icon="credit-card" href="/features/payments">
+    Integrate Wompi payment processing for transactions
+  </Card>
+</CardGroup>
+
+## What is ElectroHome?
+
+ElectroHome is a production-ready Django ecommerce platform that handles the complete customer journey — from product browsing and cart management to secure checkout and order fulfillment. It is deployed on cloud platforms like Render and Railway, making it accessible and scalable.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Google OAuth" icon="google">
+    Social login via django-allauth — users sign in with their Google account, no password required
+  </Card>
+  <Card title="Wompi Payments" icon="credit-card">
+    Integrated with Wompi payment gateway for secure card transactions in Colombian pesos
+  </Card>
+  <Card title="Cloudinary Media" icon="image">
+    Product images and user uploads stored in Cloudinary CDN for fast, global delivery
+  </Card>
+  <Card title="PostgreSQL" icon="database">
+    Production PostgreSQL database via dj-database-url with connection pooling
+  </Card>
+  <Card title="Static Files" icon="file">
+    Whitenoise serves compressed static assets directly from Django — no CDN needed for CSS/JS
+  </Card>
+  <Card title="Multi-environment" icon="layer-group">
+    Modular settings split across base, local, and production configurations
+  </Card>
+</CardGroup>
+
+## Technology stack
+
+| Layer | Technology |
+|-------|-----------|
+| Web framework | Django 5.2 |
+| Language | Python |
+| Database | PostgreSQL (production), SQLite (local) |
+| Authentication | django-allauth + Google OAuth 2.0 |
+| Payments | Wompi API |
+| Media storage | Cloudinary |
+| Static files | Whitenoise |
+| Deployment | Render / Railway |
+
+## Project structure
+
+```
+electrohome/
+├── manage.py                    # Django management entry point
+├── build.sh                     # Production build script
+└── electrohome/
+    ├── settings.py              # Base development settings
+    ├── urls.py                  # Root URL configuration
+    ├── asgi.py                  # ASGI application entry
+    ├── wsgi.py                  # WSGI application entry
+    └── Settings/
+        ├── base.py              # Shared base settings
+        ├── local.py             # Local development overrides
+        ├── production.py        # Production settings
+        └── prod.py              # Alternate production config
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="play" href="/quickstart">
+    Install dependencies and run the project locally
+  </Card>
+  <Card title="Deploy to Render" icon="cloud" href="/deployment/render">
+    Deploy ElectroHome to Render with a PostgreSQL database
+  </Card>
+</CardGroup>
